@@ -45,3 +45,44 @@ Fetch live stock prices and calculate price change
 5️⃣ (Optional) Save the stock data to a CSV file.
 
 6️⃣ Choose whether to analyze another stock or exit.
+
+
+📝 How It Works
+📌 RSI Calculation
+Measures momentum by comparing average gains vs. losses over 14 periods.
+
+Values above 70 indicate an overbought market.
+
+Values below 30 indicate an oversold market.
+
+📌 RVI Calculation
+Compares stock's opening-to-closing movement to its high-to-low range.
+
+Values above 0 suggest bullish trends.
+
+Values below 0 suggest bearish trends.
+
+
+💾 Saving Data
+To save the stock data to a CSV file, enter "yes" when prompted:
+Do you want to save this data to a CSV file? (yes/no): yes
+Data saved to AAPL_from_2024-01-01.csv
+
+
+🛠 Troubleshooting
+1️⃣ Getting an error fetching data?
+
+Ensure the ticker symbol is correct.
+
+Make sure the start date is in YYYY-MM-DD format.
+
+2️⃣ RSI or RVI values are NaN?
+
+The script requires at least 14 days of data for accurate calculations.
+
+3️⃣ No live data?
+
+The market may be closed. Try again during trading hours.
+
+
+Happy Trading! 📊🚀
