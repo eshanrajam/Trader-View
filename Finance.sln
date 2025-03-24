@@ -1,23 +1,171 @@
-﻿
-Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.10.35027.167
-MinimumVisualStudioVersion = 10.0.40219.1
-Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "Finance", "Finance\Finance.pyproj", "{50E09186-D5FD-4E85-84BC-E105AC49A82A}"
-EndProject
-Global
-	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|Any CPU = Debug|Any CPU
-		Release|Any CPU = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{50E09186-D5FD-4E85-84BC-E105AC49A82A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{50E09186-D5FD-4E85-84BC-E105AC49A82A}.Release|Any CPU.ActiveCfg = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {CFF8D22C-719E-46B0-926A-6206E34D3162}
-	EndGlobalSection
-EndGlobal
+import yfinance as yf
+import pandas as pd
+from tabulate import tabulate
+
+# Adjust pandas display settings to show the full table in the console
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', None)
+pd.set_option('display.max_colwidth', None)
+
+class StockDataFetcher:
+    """
+    A class to fetch and process stock data, including calculating RSI and RVI indicators.
+    """
+
+    def __init__(self, symbol, start_date):
+        """
+        Initialize the StockDataFetcher with a stock symbol and start date.
+        """
+        self.symbol = symbol.upper()  # Stock symbols are typically in uppercase
+        self.start_date = start_date  # Start date for fetching historical data
+        self.data = None  # Placeholder for the stock data
+        self.live_open_price = None  # Placeholder for live opening price
+        self.live_price = None  # Placeholder for live current price
+
+    def fetch_data(self):
+        """
+        Fetch historical stock data using yfinance.
+        """
+        stock = yf.Ticker(self.symbol)  # Create a Ticker object
+        self.data = stock.history(start=self.start_date)  # Fetch data from the start date
+
+        # Check if data was returned; if not, raise an error
+        if self.data.empty:
+            raise ValueError(f"No data found for {self.symbol} from {self.start_date} to current date.")
+        
+        # Keep only the columns we're interested in: Open, High, Low, Close
+        self.data = self.data[['Open', 'High', 'Low', 'Close']]
+
+    def calculate_rsi(self, period=14):
+        """
+        Calculate the Relative Strength Index (RSI) for the stock.
+        """
+        delta = self.data['Close'].diff()  # Calculate the difference between consecutive close prices
+        gain = delta.where(delta > 0, 0)  # Keep only positive gains
+        loss = -delta.where(delta < 0, 0)  # Keep only losses and convert to positive
+        avg_gain = gain.rolling(window=period).mean()  # Calculate the rolling average gain
+        avg_loss = loss.rolling(window=period).mean()  # Calculate the rolling average loss
+        rs = avg_gain / avg_loss  # Relative strength
+        self.data['RSI'] = 100 - (100 / (1 + rs))  # Calculate the RSI and add it to the DataFrame
+
+    def calculate_rvi(self, period=14):
+        """
+        Calculate the Relative Vigor Index (RVI) for the stock.
+        """
+        close_open_diff = self.data['Close'] - self.data['Open']  # Difference between close and open prices
+        high_low_diff = self.data['High'] - self.data['Low']  # Difference between high and low prices
+        rvi_numerator = close_open_diff.rolling(window=period).mean()  # Rolling average of the numerator
+        rvi_denominator = high_low_diff.rolling(window=period).mean()  # Rolling average of the denominator
+        self.data['RVI'] = rvi_numerator / rvi_denominator  # Calculate the RVI and add it to the DataFrame
+
+    def get_live_data(self):
+        """
+        Fetch the live opening and current price of the stock.
+        """
+        try:
+            stock = yf.Ticker(self.symbol)  # Create a Ticker object
+            live_data = stock.history(period="1d")  # Fetch the latest day's data
+            if not live_data.empty:
+                self.live_open_price = live_data['Open'].iloc[-1]  # Get the opening price
+                self.live_price = live_data['Close'].iloc[-1]  # Get the last close price (live price)
+            else:
+                raise ValueError(f"Live price data for {self.symbol} is unavailable.")
+        except Exception as e:
+            print(f"Error fetching live data for {self.symbol}: {e}")
+            return None
+
+    def calculate_live_change(self):
+        """
+        Calculate the live percentage change and price difference compared to the opening price.
+        """
+        if self.live_open_price and self.live_price:
+            price_diff = self.live_price - self.live_open_price  # Difference in price compared to opening
+            percent_change = (price_diff / self.live_open_price) * 100  # Percentage change
+
+            # Determine if the price is up or down
+            arrow = "↑" if price_diff > 0 else "↓"
+
+            return price_diff, percent_change, arrow
+        else:
+            return None, None, None
+
+    def display_data(self):
+        """
+        Display the stock data in a table format.
+        """
+        print(f"\nStock data for {self.symbol} from {self.start_date} to current date:")
+        
+        # Format the prices to two decimal places and add a dollar sign
+        self.data['Open'] = self.data['Open'].round(2).apply(lambda x: f"${x:,.2f}")
+        self.data['High'] = self.data['High'].round(2).apply(lambda x: f"${x:,.2f}")
+        self.data['Low'] = self.data['Low'].round(2).apply(lambda x: f"${x:,.2f}")
+        self.data['Close'] = self.data['Close'].round(2).apply(lambda x: f"${x:,.2f}")
+        self.data['RSI'] = self.data['RSI'].round(2)  # Round RSI to two decimal places
+        self.data['RVI'] = self.data['RVI'].round(4)  # Round RVI to four decimal places
+        
+        # Convert DataFrame to a list of lists for tabulate
+        table_data = self.data.reset_index().values.tolist()
+        headers = self.data.reset_index().columns.tolist()
+        
+        # Print the table
+        print(tabulate(table_data, headers=headers, tablefmt="fancy_grid"))
+
+        # Display the live data with percentage change and price difference
+        price_diff, percent_change, arrow = self.calculate_live_change()
+        if price_diff is not None and percent_change is not None:
+            print(f"\nLive Data for {self.symbol}:")
+            print(f"  Opening Price: ${self.live_open_price:.2f}")
+            print(f"  Current Price: ${self.live_price:.2f}")
+            print(f"  Price Change: ${price_diff:.2f} {arrow}")
+            print(f"  Percent Change: {percent_change:.2f}% {arrow}")
+
+    def save_to_csv(self, filename=None):
+        """
+        Save the stock data to a CSV file.
+        """
+        if filename is None:
+            filename = f"{self.symbol}_from_{self.start_date}.csv"  # Default filename
+        self.data.to_csv(filename)  # Save the data
+        print(f"Data saved to {filename}")
+
+# Main function to run the script
+def main():
+    while True:
+        # Prompt the user for the stock/ETF symbol and start date
+        stock_symbol = input("Enter the stock or ETF ticker symbol (e.g., AAPL for Apple, SPY for S&P 500 ETF): ")
+        start_date_input = input("Enter the start date (YYYY-MM-DD): ")
+
+        try:
+            # Create an instance of StockDataFetcher with the provided inputs
+            fetcher = StockDataFetcher(stock_symbol, start_date_input)
+
+            # Fetch and display the live data
+            fetcher.get_live_data()
+
+            # Fetch the historical data, calculate indicators, and display the results
+            fetcher.fetch_data()
+            fetcher.calculate_rsi()
+            fetcher.calculate_rvi()
+            fetcher.display_data()
+
+            # Ask the user if they want to save the data to a CSV file
+            save_data = input("\nDo you want to save this data to a CSV file? (yes/no): ").lower()
+            if save_data == 'yes':
+                fetcher.save_to_csv()
+
+        except ValueError as ve:
+            print(f"Error: {ve}")
+        
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
+        # Ask the user if they want to analyze another stock or ETF
+        another_stock = input("\nWould you like to view data for another stock or ETF? (yes/no): ").lower()
+        if another_stock != 'yes':
+            print("Thank you for using the stock data viewer. Goodbye!")
+            break
+
+# Run the script when executed directly
+if __name__ == "__main__":
+    main()
